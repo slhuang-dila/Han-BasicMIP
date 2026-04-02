@@ -612,7 +612,8 @@ function doConfirm(wk,entry,pos,k,senses,rname,grp,stEl) {
   const checked=document.querySelector(`[name="${rname}"]:checked`);
   if(!checked){ toast('請先選擇一個義項',true); return; }
   const idx=parseInt(checked.value);
-  const sense=senses[idx];
+  const sense=senses.find(s=>s.idx===idx);
+  if(!sense){ toast('找不到對應義項，請重試',true); return; }
   const noteEl=document.getElementById(`note_${k.replace(/[^a-z0-9]/gi,'_')}`);
   ann[k]={word_key:wk,word:entry.word,zhuyin:entry.zy,pos,
     basic_sense_id:sense.sid,basic_sense_text:sense.text,
@@ -628,9 +629,15 @@ function doClear(wk,entry,pos,k,rname,sugI,grp,stEl) {
   delete ann[k];
   grp.className='pg';
   stEl.innerHTML='<span class="st-todo">待標注</span>';
-  document.querySelectorAll(`[name="${rname}"]`).forEach((r,i)=>{ r.checked=(sugI===i); });
+  document.querySelectorAll(`[name="${rname}"]`).forEach(r=>{ r.checked=false; });
   document.querySelectorAll(`[id^="row_${rname}_"]`).forEach(el=>el.classList.remove('sel'));
-  if(sugI!==null) highlightRow(rname,sugI);
+  if(sugI!==null){
+    const sugSense=senses[sugI];
+    if(sugSense){
+      const sugRb=document.querySelector(`[name="${rname}"][value="${sugSense.idx}"]`);
+      if(sugRb){ sugRb.checked=true; highlightRow(rname,sugSense.idx); }
+    }
+  }
   updateNavHL(); updateProgress();
   toast(`已清除：${wk}[${pos}]`);
 }
