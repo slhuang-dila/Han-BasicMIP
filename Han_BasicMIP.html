@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Han-BasicMIP 中文基本義標注工具</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ── 設計系統 ── */
+:root {
+  --bg:        #0f1a14;
+  --bg2:       #162019;
+  --bg3:       #1e2d22;
+  --bg4:       #253329;
+  --border:    #2e4234;
+  --border2:   #3d5645;
+  --accent:    #5c9e6e;
+  --accent2:   #7bbf8e;
+  --gold:      #c9a84c;
+  --gold2:     #e8c96a;
+  --text:      #e8e0d0;
+  --text2:     #b8b0a0;
+  --text3:     #7a7268;
+  --done-bg:   #0d2417;
+  --done-bd:   #2d6e3e;
+  --skip-bg:   #1a1a14;
+  --skip-bd:   #3a3828;
+  --N-color:   #6baed6;
+  --V-color:   #fd8d3c;
+  --other-color: #74c476;
+  --font-main: 'Georgia', '標楷體', serif;
+  --font-ui:   'Trebuchet MS', 'Noto Sans TC', sans-serif;
+  --font-mono: 'Courier New', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 頂部工具列 ── */
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 18px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+#topbar h1 {
+  font-family: var(--font-main);
+  font-size: 17px;
+  color: var(--gold2);
+  letter-spacing: .04em;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.tb-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 14px;
+  border: 1px solid var(--border2);
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--text2);
+  cursor: pointer;
+  font: 13px var(--font-ui);
+  white-space: nowrap;
+  transition: all .15s;
+}
+.btn:hover { background: var(--bg4); color: var(--text); border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent2); color: #0f1a14; font-weight: 600; }
+.btn.primary:hover { background: var(--accent2); }
+.btn.gold { background: transparent; border-color: var(--gold); color: var(--gold); }
+.btn.gold:hover { background: var(--gold); color: #0f1a14; }
+
+input[type=file] { display: none; }
+
+#progress-wrap {
+  display: flex; align-items: center; gap: 8px;
+  margin-left: auto; flex-shrink: 0;
+}
+#progress-text { font-size: 12px; color: var(--text3); white-space: nowrap; }
+#progress-bar-track {
+  width: 120px; height: 6px;
+  background: var(--bg3); border-radius: 3px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+#progress-bar-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 3px; transition: width .3s;
+  width: 0%;
+}
+
+/* ── 搜尋列 ── */
+#search-bar {
+  padding: 0 0 0 0;
+  flex-shrink: 0;
+  display: none;
+}
+#search-input {
+  width: 100%; padding: 6px 12px;
+  background: var(--bg3);
+  border: none; border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font: 13px var(--font-ui);
+  outline: none;
+}
+#search-input::placeholder { color: var(--text3); }
+
+/* ── 主體三欄 ── */
+#main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  display: none;
+}
+
+/* ── 左欄：詞條導覽 ── */
+#nav-pane {
+  width: 200px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#nav-search {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+#nav-input {
+  width: 100%; padding: 5px 8px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text);
+  font: 12px var(--font-ui); outline: none;
+}
+#nav-input::placeholder { color: var(--text3); }
+
+#nav-filter {
+  display: flex; gap: 4px; padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.fchip {
+  font-size: 11px; padding: 2px 7px; border-radius: 10px;
+  border: 1px solid var(--border2); background: transparent;
+  color: var(--text3); cursor: pointer; transition: all .12s;
+}
+.fchip.active { background: var(--accent); border-color: var(--accent); color: #0f1a14; font-weight: 600; }
+
+#nav-list {
+  flex: 1; overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.nav-item {
+  padding: 7px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #1a2420;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px;
+  transition: background .1s;
+}
+.nav-item:hover { background: var(--bg3); }
+.nav-item.active { background: var(--bg4); border-left: 2px solid var(--accent); padding-left: 10px; }
+.nav-word { font-family: var(--font-main); font-size: 15px; color: var(--text); }
+.nav-py { font-size: 10px; color: var(--text3); }
+.nav-badge {
+  font-size: 10px; padding: 1px 5px; border-radius: 8px;
+  flex-shrink: 0;
+}
+.nav-badge.done { background: var(--done-bd); color: #8fe8a0; }
+.nav-badge.partial { background: #3d3010; color: var(--gold); }
+.nav-badge.todo { background: var(--bg3); color: var(--text3); border: 1px solid var(--border); }
+
+#nav-count { font-size: 11px; color: var(--text3); padding: 6px 10px; border-top: 1px solid var(--border); flex-shrink: 0; }
+
+/* ── 中欄：標注主體 ── */
+#annot-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+
+#word-header {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 24px 12px;
+  display: flex; align-items: baseline; gap: 14px;
+  flex-wrap: wrap;
+}
+#word-display {
+  font-family: var(--font-main);
+  font-size: 36px;
+  color: var(--gold2);
+  line-height: 1;
+}
+#word-meta { color: var(--text3); font-size: 13px; }
+#word-nav {
+  margin-left: auto;
+  display: flex; align-items: center; gap: 8px;
+}
+.nav-arrow {
+  width: 30px; height: 30px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  border-radius: 4px; cursor: pointer; color: var(--text2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; transition: all .12s;
+}
+.nav-arrow:hover { background: var(--bg4); color: var(--text); border-color: var(--accent); }
+.nav-arrow:disabled { opacity: .3; cursor: default; }
+#word-pos-label { font-size: 12px; color: var(--text3); }
+
+#pos-groups { padding: 20px 24px; }
+
+.pos-group {
+  margin-bottom: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color .2s;
+}
+.pos-group.done  { border-color: var(--done-bd); background: var(--done-bg); }
+.pos-group.skipped { border-color: var(--skip-bd); background: var(--skip-bg); opacity: .75; }
+
+.pos-group-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: rgba(0,0,0,.25);
+  border-bottom: 1px solid var(--border);
+}
+.pos-tag {
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 700;
+  padding: 2px 10px; border-radius: 12px;
+  min-width: 36px; text-align: center;
+}
+.pos-tag.N { background: rgba(107,174,214,.2); color: var(--N-color); border: 1px solid rgba(107,174,214,.4); }
+.pos-tag.V { background: rgba(253,141,60,.2); color: var(--V-color); border: 1px solid rgba(253,141,60,.4); }
+.pos-tag.other { background: rgba(116,196,118,.15); color: var(--other-color); border: 1px solid rgba(116,196,118,.3); }
+
+.pos-group-status { margin-left: auto; font-size: 12px; }
+.status-done { color: #6ecc80; }
+.status-skip { color: var(--text3); }
+.status-todo { color: var(--text3); }
+
+.skip-toggle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--text3); cursor: pointer;
+  padding: 2px 4px; border-radius: 3px;
+  transition: color .1s;
+}
+.skip-toggle:hover { color: var(--text2); }
+.skip-toggle input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+
+.sense-list { padding: 8px 0; }
+
+.sense-row {
+  display: flex; align-items: flex-start; gap: 0;
+  padding: 6px 16px;
+  border-radius: 4px; margin: 2px 8px;
+  cursor: pointer;
+  transition: background .1s;
+}
+.sense-row:hover { background: rgba(255,255,255,.04); }
+.sense-row.selected { background: rgba(92,158,110,.12); }
+
+.sense-radio {
+  margin-top: 3px; margin-right: 10px; flex-shrink: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 15px; height: 15px;
+}
+.sense-id {
+  font-family: var(--font-mono);
+  font-size: 12px; font-weight: 700;
+  color: var(--text3); min-width: 38px;
+  flex-shrink: 0; padding-top: 2px;
+}
+.sense-text {
+  font-family: var(--font-main);
+  font-size: 14px; color: var(--text);
+  line-height: 1.65; flex: 1;
+  user-select: text;
+}
+
+.suggest-banner {
+  margin: 4px 16px 8px;
+  padding: 6px 12px;
+  background: rgba(201,168,76,.08);
+  border: 1px solid rgba(201,168,76,.25);
+  border-radius: 5px;
+  font-size: 12px; color: var(--gold);
+  display: flex; align-items: flex-start; gap: 6px;
+}
+.suggest-banner .sug-icon { flex-shrink: 0; margin-top: 1px; }
+
+.confirm-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px 12px;
+}
+.note-input {
+  flex: 1; max-width: 220px;
+  padding: 4px 8px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text);
+  font: 12px var(--font-ui); outline: none;
+}
+.note-input:focus { border-color: var(--accent); }
+.note-input::placeholder { color: var(--text3); }
+
+/* ── 右欄：詞庫輔助 ── */
+#lex-pane {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 0;
+  scrollbar-width: thin;
+}
+.lex-section { padding: 14px 14px 10px; border-bottom: 1px solid var(--border); }
+.lex-title { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); margin-bottom: 8px; }
+.lex-row { margin-bottom: 5px; }
+.lex-label { font-size: 11px; color: var(--text3); }
+.lex-val { font-size: 12px; color: var(--text2); }
+.lex-freq { font-size: 16px; color: var(--accent2); font-weight: 600; }
+
+.tag-wrap { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.tag {
+  font-size: 10px; padding: 2px 6px; border-radius: 10px;
+  background: var(--bg3); border: 1px solid var(--border2);
+  color: var(--text3);
+}
+.tag.concrete { background: rgba(201,168,76,.12); border-color: rgba(201,168,76,.4); color: var(--gold); }
+
+/* ── 開始畫面 ── */
+#start-screen {
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 28px; padding: 40px;
+}
+.start-logo {
+  font-family: var(--font-main);
+  font-size: 48px; color: var(--gold2);
+  letter-spacing: .06em;
+  text-shadow: 0 0 40px rgba(201,168,76,.3);
+}
+.start-sub {
+  font-size: 15px; color: var(--text3);
+  letter-spacing: .05em;
+}
+.start-panel {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 28px 36px;
+  display: flex; flex-direction: column; gap: 16px;
+  width: 100%; max-width: 500px;
+}
+.start-row { display: flex; flex-direction: column; gap: 6px; }
+.start-row label { font-size: 13px; color: var(--text2); }
+.start-note { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.upload-btn-wrap { display: flex; align-items: center; gap: 10px; }
+.upload-status { font-size: 12px; color: var(--accent2); }
+.start-divider { height: 1px; background: var(--border); margin: 4px 0; }
+.start-actions { display: flex; justify-content: center; margin-top: 4px; }
+.start-note-box {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 14px;
+  font-size: 12px; color: var(--text3); line-height: 1.7;
+}
+
+/* ── 載入中 ── */
+#loading-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15,26,20,.92);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 16px; z-index: 100;
+}
+.loading-spin {
+  width: 40px; height: 40px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { color: var(--text2); font-size: 14px; }
+
+/* ── 捲軸 ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--bg4); border: 1px solid var(--border2);
+  color: var(--text); border-radius: 6px;
+  padding: 9px 20px; font-size: 13px;
+  opacity: 0; transition: opacity .2s;
+  pointer-events: none; z-index: 200;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ── 頂部工具列 ── -->
+<div id="topbar">
+  <h1>Han-BasicMIP</h1>
+  <div class="tb-sep"></div>
+  <button class="btn" onclick="triggerXlsx()">📂 載入辭典 xlsx</button>
+  <input type="file" id="xlsx-file" accept=".xlsx,.xlsm" onchange="loadXlsx(this)">
+  <button class="btn" onclick="triggerAnn()" id="btn-load-ann" disabled>📥 載入標注 json</button>
+  <input type="file" id="ann-file" accept=".json" onchange="loadAnnotations(this)">
+  <div class="tb-sep"></div>
+  <button class="btn gold" onclick="downloadAnnotations()" id="btn-download" disabled>⬇ 下載標注 json</button>
+  <div id="progress-wrap">
+    <span id="progress-text">—</span>
+    <div id="progress-bar-track"><div id="progress-bar-fill"></div></div>
+  </div>
+</div>
+
+<!-- ── 開始畫面 ── -->
+<div id="start-screen">
+  <div class="start-logo">漢</div>
+  <div class="start-sub">Han-BasicMIP 中文基本義標注工具</div>
+  <div class="start-panel">
+    <div class="start-row">
+      <label>第一步：載入教育部辭典</label>
+      <div class="upload-btn-wrap">
+        <button class="btn" onclick="triggerXlsx()">選擇 dict_revised_2015_20240821.xlsx</button>
+        <span class="upload-status" id="xlsx-status">未載入</span>
+      </div>
+      <div class="start-note">檔案在瀏覽器本地處理，不會上傳至任何伺服器。載入約需 30-60 秒。</div>
+    </div>
+    <div class="start-divider"></div>
+    <div class="start-row">
+      <label>第二步（選填）：載入先前的標注進度</label>
+      <div class="upload-btn-wrap">
+        <button class="btn" onclick="triggerAnn()" id="btn-load-ann2" disabled>選擇 basic_sense_annotations.json</button>
+        <span class="upload-status" id="ann-status">未載入</span>
+      </div>
+    </div>
+    <div class="start-actions">
+      <button class="btn primary" onclick="startAnnotation()" id="btn-start" disabled style="padding:8px 32px;font-size:14px">
+        開始標注 →
+      </button>
+    </div>
+  </div>
+  <div class="start-note-box" style="max-width:500px">
+    標注後請點上方「⬇ 下載標注 json」儲存進度。<br>
+    下次開啟時再載入該 json 即可接續作業。<br>
+    存檔 key 格式：<code style="color:var(--gold)">詞_拼音_詞性碼</code>（如 <code style="color:var(--accent2)">行_xing2_V</code>）
+  </div>
+</div>
+
+<!-- ── 主體三欄（隱藏直到載入完成）── -->
+<div id="main">
+  <!-- 左欄 -->
+  <div id="nav-pane">
+    <div id="nav-search">
+      <input id="nav-input" type="text" placeholder="搜尋詞條…" oninput="filterNav()">
+    </div>
+    <div id="nav-filter">
+      <div class="fchip active" data-filter="todo" onclick="setFilter(this)">待標注</div>
+      <div class="fchip" data-filter="all" onclick="setFilter(this)">全部</div>
+      <div class="fchip" data-filter="done" onclick="setFilter(this)">完成</div>
+    </div>
+    <div id="nav-list"></div>
+    <div id="nav-count"></div>
+  </div>
+
+  <!-- 中欄 -->
+  <div id="annot-pane">
+    <div id="word-header">
+      <div id="word-display">—</div>
+      <div id="word-meta"></div>
+      <div id="word-nav">
+        <span id="word-pos-label"></span>
+        <button class="nav-arrow" id="btn-prev" onclick="goWord(-1)">‹</button>
+        <button class="nav-arrow" id="btn-next" onclick="goWord(1)">›</button>
+      </div>
+    </div>
+    <div id="pos-groups"></div>
+  </div>
+
+  <!-- 右欄 -->
+  <div id="lex-pane">
+    <div class="lex-section">
+      <div class="lex-title">詞庫小組輔助</div>
+      <div id="lex-content"><div style="color:var(--text3);font-size:12px">無對應詞條</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 載入中 -->
+<div id="loading-overlay">
+  <div class="loading-spin"></div>
+  <div class="loading-text" id="loading-text">解析辭典中…</div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// 常數 & 狀態
+// ═══════════════════════════════════════════════════════════════
+
+const POS_EN = {名:'N',動:'V',形:'A',副:'D',介:'P',連:'C',助:'T',嘆:'I',擬:'O',代:'R',綴:'X',量:'M',數:'Q',符:'U',頭:'H',尾:'L','—':'X'};
+const ANNOTATE_POS = new Set(['名','動']);
+const CONCRETE_FEATS = new Set(['+physical','+animate','+liquid','+solid','+gas','+mammals','+birds','+plants','+flowers','+fruits','+animals','+food','+buildings','+terrains','+celestial_bodies','+materials','+clothing','+vehicles','+transportation','+machines','+apparatus','+worms&insects','+amphibians','+reptiles','+marine','+woody','+herbaceous','+human','+inanimate']);
+const SINICA2MOE = {N:'名',V:'動',D:'副',A:'形',P:'介',C:'連',I:'嘆',T:'助'};
+
+let dictEntries  = {};   // word_key -> entry
+let lexiconInfo  = {};   // base_word -> {freq, pos_list, sem_features}
+let annotations  = {};   // pg_key -> annotation
+let navWords     = [];   // filtered word_key list
+let currentIdx   = 0;
+let navFilter    = 'todo';
+
+// ═══════════════════════════════════════════════════════════════
+// 拼音轉換
+// ═══════════════════════════════════════════════════════════════
+
+const TONE_MAP = {ā:['a','1'],á:['a','2'],ǎ:['a','3'],à:['a','4'],ē:['e','1'],é:['e','2'],ě:['e','3'],è:['e','4'],ī:['i','1'],í:['i','2'],ǐ:['i','3'],ì:['i','4'],ō:['o','1'],ó:['o','2'],ǒ:['o','3'],ò:['o','4'],ū:['u','1'],ú:['u','2'],ǔ:['u','3'],ù:['u','4'],ǖ:['v','1'],ǘ:['v','2'],ǚ:['v','3'],ǜ:['v','4'],ü:['v','']};
+
+function pinyinNumeric(py) {
+  if (!py) return 'x';
+  let result = '', tone = '';
+  for (const ch of py) {
+    if (TONE_MAP[ch]) {
+      const [base, d] = TONE_MAP[ch];
+      result += base;
+      if (d) tone = d;
+    } else result += ch;
+  }
+  return result + (tone || '5');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 例句刪除
+// ═══════════════════════════════════════════════════════════════
+
+function stripExamples(text) {
+  // 1. 如：「…」
+  text = text.replace(/如：「[^」]*(?:」[、，。；\s]*「[^」]*)*」/g, '');
+  // 2. 如…文字例
+  text = text.replace(/如[^。；\n「」《》]{1,30}[。；]/g, '');
+  // 3-5. 迴圈刪除引文
+  for (let i = 0; i < 8; i++) {
+    const prev = text;
+    text = text.replace(/[^。；\n，、]*《[^》]+》[^「\n「」]*「[^」\n]*」[。；]?/g, '');
+    text = text.replace(/[^。；\n，、]*〈[^〉]+〉[^「\n「」]*「[^」\n]*」[。；]?/g, '');
+    text = text.replace(/(。)[\u4e00-\u9fa5\uff0e]{3,}[：:][「『][^」』\n]*[」』][。；]?/g, '$1');
+    text = text.replace(/[^。；\n]*[\u4e00-\u9fa5]{1,4}\uff0e[\u4e00-\u9fa5\uff0e]{1,25}[：:][「『][^」』\n]*[」』][。；]?/g, '');
+    if (text === prev) break;
+  }
+  // 6. 未閉合引文
+  text = text.replace(/[「『][^」』\n]*$/, '');
+  // 7. 殘留標記
+  text = text.replace(/(。)[^。；\n]*(?:《[^》]*》|〈[^〉]*〉)[^。；\n]*[：:][。；]?/g, '$1');
+  text = text.replace(/[\u4e00-\u9fa5\uff0e]{2,}[：:][。；]?/g, '');
+  // 8. 括號
+  text = text.replace(/（[^）]+）/g, '');
+  // 9. 清理
+  text = text.replace(/[。；\s]{2,}/g, '。').replace(/^[。；、，\s]+/, '').trim();
+  if (text && !'。！？」'.includes(text.slice(-1))) text += '。';
+  return text;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 解析辭典義項
+// ═══════════════════════════════════════════════════════════════
+
+function parseSenses(raw) {
+  if (!raw) return [];
+  const text = raw.replace(/_x000D_/g, '').replace(/\r/g, '').trim();
+  const senses = [];
+  const blocks = text.split(/(\[[^\]]{1,6}\])/);
+  for (let i = 0; i < blocks.length; i++) {
+    const blk = blocks[i].trim();
+    if (/^\[[^\]]{1,6}\]$/.test(blk)) {
+      const pos = blk.slice(1, -1);
+      i++;
+      if (i < blocks.length) {
+        const items = blocks[i].trim().split(/(?=^\d+\.)/m);
+        for (const item of items) {
+          const t = item.trim();
+          if (!t) continue;
+          const m = t.match(/^(\d+)\.(.+)/s);
+          const [num, stxt] = m ? [m[1], m[2].trim()] : ['1', t];
+          if (stxt) senses.push({sid:`${pos}${num}`, pos, text: stripExamples(stxt), idx: senses.length});
+        }
+      }
+    }
+  }
+  if (!senses.length && text) senses.push({sid:'義1', pos:'—', text: stripExamples(text), idx:0});
+  return senses;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 載入 xlsx（SheetJS）
+// ═══════════════════════════════════════════════════════════════
+
+function triggerXlsx() { document.getElementById('xlsx-file').click(); }
+function triggerAnn()   { document.getElementById('ann-file').click(); }
+
+function loadXlsx(input) {
+  const file = input.files[0];
+  if (!file) return;
+  showLoading('解析辭典中，請稍候（約 30-60 秒）…');
+  document.getElementById('xlsx-status').textContent = '解析中…';
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    setTimeout(() => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb   = XLSX.read(data, {type:'array'});
+        const ws   = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:''});
+
+        // 依（字詞名, 注音）分組
+        const raw = {};
+        const w2z = {};
+        for (let i = 1; i < rows.length; i++) {
+          const r    = rows[i];
+          const word = String(r[0] || '').trim();
+          if (!word) continue;
+          const zy   = String(r[8]  || '').trim();
+          const py   = String(r[11] || '').trim();
+          const def  = String(r[15] || '').trim();
+          const key  = `${word}||${zy}`;
+          if (!raw[key]) raw[key] = {word, zy, py, rows: []};
+          raw[key].rows.push({py, senses: parseSenses(def)});
+          if (!w2z[word]) w2z[word] = new Set();
+          w2z[word].add(zy);
+        }
+
+        dictEntries = {};
+        for (const [key, entry] of Object.entries(raw)) {
+          const {word, zy} = entry;
+          const isPoly = w2z[word].size > 1;
+          const py     = entry.rows[0].py;
+          const pyNum  = pinyinNumeric(py);
+          const wordKey = isPoly && py ? `${word}_${pyNum}` : word;
+          const senses  = [];
+          for (const r of entry.rows)
+            for (const s of r.senses)
+              senses.push({...s, idx: senses.length});
+          // 依詞性分組
+          const groups = {};
+          for (const s of senses) {
+            if (!groups[s.pos]) groups[s.pos] = [];
+            groups[s.pos].push({sid:s.sid, text:s.text});
+          }
+          // 只保留有多義項名/動需要標注的詞條
+          const needsAnnotation = Object.entries(groups).some(
+            ([p, ss]) => ANNOTATE_POS.has(p) && ss.length > 1
+          );
+          if (needsAnnotation) {
+            dictEntries[wordKey] = {word, wordKey, zy, py, isPoly, groups};
+          }
+        }
+
+        document.getElementById('xlsx-status').textContent = `✓ ${Object.keys(dictEntries).length.toLocaleString()} 筆詞條已載入`;
+        document.getElementById('btn-load-ann').disabled  = false;
+        document.getElementById('btn-load-ann2').disabled = false;
+        document.getElementById('btn-start').disabled     = false;
+        hideLoading();
+        toast(`辭典載入完成：${Object.keys(dictEntries).length.toLocaleString()} 筆需標注詞條`);
+      } catch(err) {
+        hideLoading();
+        document.getElementById('xlsx-status').textContent = '載入失敗';
+        alert('xlsx 解析失敗：' + err.message);
+      }
+    }, 50);
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 載入標注進度 json
+// ═══════════════════════════════════════════════════════════════
+
+function loadAnnotations(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const loaded = JSON.parse(e.target.result);
+      annotations = loaded;
+      document.getElementById('ann-status').textContent = `✓ ${Object.keys(annotations).length.toLocaleString()} 筆`;
+      toast(`已載入 ${Object.keys(annotations).length.toLocaleString()} 筆標注記錄`);
+      if (document.getElementById('main').style.display !== 'none') {
+        refreshNav();
+        renderWordByIdx(currentIdx);
+      }
+    } catch(err) {
+      alert('json 格式錯誤：' + err.message);
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+  input.value = '';
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 下載標注 json
+// ═══════════════════════════════════════════════════════════════
+
+function downloadAnnotations() {
+  const clean = {};
+  for (const [k, v] of Object.entries(annotations)) {
+    const {_idx, ...rest} = v;
+    clean[k] = rest;
+  }
+  const blob = new Blob([JSON.stringify(clean, null, 2)], {type:'application/json'});
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'basic_sense_annotations.json';
+  a.click(); URL.revokeObjectURL(url);
+  toast('✓ 已下載 basic_sense_annotations.json');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 開始標注
+// ═══════════════════════════════════════════════════════════════
+
+function startAnnotation() {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('main').style.display = 'flex';
+  document.getElementById('btn-download').disabled = false;
+  refreshNav();
+  goWord(0);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 導覽列
+// ═══════════════════════════════════════════════════════════════
+
+function wordStatus(wordKey) {
+  const entry  = dictEntries[wordKey];
+  let total = 0, done = 0;
+  for (const [pos, ss] of Object.entries(entry.groups)) {
+    if (!ANNOTATE_POS.has(pos) || ss.length <= 1) continue;
+    total++;
+    const k = pgKey(wordKey, pos, entry.py);
+    if (annotations[k]) done++;
+  }
+  if (done === 0) return 'todo';
+  if (done >= total) return 'done';
+  return 'partial';
+}
+
+let navFilterActive = 'todo';
+
+function setFilter(el) {
+  document.querySelectorAll('.fchip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  navFilterActive = el.dataset.filter;
+  filterNav();
+}
+
+function filterNav() {
+  const q = document.getElementById('nav-input').value.trim().toLowerCase();
+  navWords = Object.keys(dictEntries).filter(wk => {
+    const e = dictEntries[wk];
+    if (q && !wk.includes(q) && !e.word.includes(q)) return false;
+    if (navFilterActive === 'todo')    return wordStatus(wk) !== 'done';
+    if (navFilterActive === 'done')    return wordStatus(wk) === 'done';
+    return true;
+  });
+  renderNav();
+}
+
+function refreshNav() {
+  filterNav();
+}
+
+function renderNav() {
+  const list = document.getElementById('nav-list');
+  list.innerHTML = '';
+  navWords.forEach((wk, i) => {
+    const e   = dictEntries[wk];
+    const st  = wordStatus(wk);
+    const div = document.createElement('div');
+    div.className = 'nav-item' + (i === currentIdx ? ' active' : '');
+    div.dataset.idx = i;
+    const badgeClass = {done:'done', partial:'partial', todo:'todo'}[st];
+    const badgeText  = {done:'✓', partial:'◑', todo:'○'}[st];
+    div.innerHTML = `
+      <div>
+        <div class="nav-word">${e.isPoly ? wk : e.word}</div>
+        <div class="nav-py">${e.zy} ${e.py}</div>
+      </div>
+      <span class="nav-badge ${badgeClass}">${badgeText}</span>`;
+    div.onclick = () => { currentIdx = i; renderWordByIdx(i); };
+    list.appendChild(div);
+  });
+  document.getElementById('nav-count').textContent =
+    `${navWords.length.toLocaleString()} 筆`;
+  updateProgress();
+}
+
+function updateNavHighlight() {
+  document.querySelectorAll('.nav-item').forEach((el, i) => {
+    el.classList.toggle('active', i === currentIdx);
+    const wk = navWords[i];
+    if (wk) {
+      const st = wordStatus(wk);
+      el.querySelector('.nav-badge').className = `nav-badge ${st}`;
+      el.querySelector('.nav-badge').textContent = {done:'✓',partial:'◑',todo:'○'}[st];
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 詞條渲染
+// ═══════════════════════════════════════════════════════════════
+
+function pgKey(wordKey, pos, py) {
+  const pyNum   = pinyinNumeric(py);
+  const posCode = POS_EN[pos] || 'X';
+  const base    = wordKey.split('_')[0];
+  return `${base}_${pyNum}_${posCode}`;
+}
+
+function suggestIdx(baseWord, pos, senses) {
+  const info = lexiconInfo[baseWord];
+  if (!info) return null;
+  const hasConcrete = info.sem_features.some(f => CONCRETE_FEATS.has(f));
+  if (!hasConcrete) return null;
+  const lexPos = new Set(
+    info.pos_list.map(c => SINICA2MOE[c.replace(/^!/,'')[0]]).filter(Boolean)
+  );
+  if (!lexPos.has(pos)) return null;
+  return senses.length ? 0 : null;
+}
+
+function goWord(delta) {
+  if (!navWords.length) return;
+  if (delta === 0) { currentIdx = 0; }
+  else { currentIdx = Math.max(0, Math.min(navWords.length - 1, currentIdx + delta)); }
+  renderWordByIdx(currentIdx);
+  // 捲到可見
+  const items = document.querySelectorAll('.nav-item');
+  if (items[currentIdx]) items[currentIdx].scrollIntoView({block:'nearest'});
+}
+
+function renderWordByIdx(idx) {
+  currentIdx = idx;
+  const wordKey = navWords[idx];
+  if (!wordKey) return;
+  const entry = dictEntries[wordKey];
+
+  // 標頭
+  document.getElementById('word-display').textContent = entry.isPoly ? wordKey : entry.word;
+  document.getElementById('word-meta').textContent    = `${entry.zy}  ${entry.py}${entry.isPoly ? '  破音字' : ''}`;
+  document.getElementById('word-pos-label').textContent = `${idx+1} / ${navWords.length}`;
+  document.getElementById('btn-prev').disabled = idx <= 0;
+  document.getElementById('btn-next').disabled = idx >= navWords.length - 1;
+
+  // 詞庫輔助
+  renderLex(entry.word);
+
+  // 詞性組
+  const container = document.getElementById('pos-groups');
+  container.innerHTML = '';
+
+  for (const [pos, senses] of Object.entries(entry.groups)) {
+    const k      = pgKey(wordKey, pos, entry.py);
+    const ann    = annotations[k];
+    const isDone = ann && !ann.skipped;
+    const isSkip = ann && ann.skipped;
+    const isMulti    = senses.length > 1;
+    const isAnnotate = ANNOTATE_POS.has(pos);
+    const sugI   = isMulti && isAnnotate ? suggestIdx(entry.word, pos, senses) : null;
+
+    const grp = document.createElement('div');
+    grp.className = 'pos-group' + (isDone ? ' done' : isSkip ? ' skipped' : '');
+    grp.id = `grp-${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+
+    // pos tag css
+    const posClass = pos === '名' ? 'N' : pos === '動' ? 'V' : 'other';
+
+    // skip checkbox state
+    const skipChecked = isSkip ? 'checked' : '';
+    const skipId = `skip_${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+
+    let innerHtml = `
+      <div class="pos-group-header">
+        <span class="pos-tag ${posClass}">[${pos}]</span>
+        <label class="skip-toggle" for="${skipId}">
+          <input type="checkbox" id="${skipId}" ${skipChecked}
+            onchange="onSkip('${wordKey}','${pos}','${entry.py}',this.checked)">
+          略過
+        </label>
+        <span class="pos-group-status">
+          ${isDone ? '<span class="status-done">✓ 已標注</span>' :
+            isSkip ? '<span class="status-skip">略過</span>' :
+            '<span class="status-todo">待標注</span>'}
+        </span>
+      </div>`;
+
+    if (!isAnnotate || !isMulti) {
+      // 非名/動 或 單義項：只顯示義項文字（不需 Radio）
+      innerHtml += '<div class="sense-list">';
+      const showSenses = isMulti ? senses : senses;
+      for (const s of showSenses.slice(0, isAnnotate ? undefined : 4)) {
+        innerHtml += `
+          <div class="sense-row" style="cursor:default">
+            <span class="sense-id">[${s.sid}]</span>
+            <span class="sense-text" style="color:var(--text3)">${s.text}</span>
+          </div>`;
+      }
+      if (!isAnnotate && senses.length > 4)
+        innerHtml += `<div style="padding:4px 16px;font-size:11px;color:var(--text3)">…共 ${senses.length} 條</div>`;
+      if (isAnnotate && !isMulti && isDone)
+        innerHtml += `<div style="padding:4px 16px 8px;font-size:12px;color:var(--accent2)">（單義項，已自動採用）</div>`;
+      innerHtml += '</div>';
+    } else {
+      // 多義項名/動：Radio 選基本義
+      const radioName = `radio_${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+
+      // 建議橫幅
+      if (sugI !== null && !isDone) {
+        const sugSense = senses[sugI];
+        innerHtml += `
+          <div class="suggest-banner">
+            <span class="sug-icon">★</span>
+            <span>建議：[${sugSense.sid}] ${sugSense.text.slice(0,50)}…（依詞庫具體性特徵）</span>
+          </div>`;
+      }
+
+      innerHtml += '<div class="sense-list">';
+      for (const s of senses) {
+        const curVal  = ann && !ann.skipped ? ann._idx : null;
+        const checked = (curVal === s.idx || (curVal === null && sugI === s.idx && !isDone))
+          ? 'checked' : '';
+        const rowCls  = (curVal === s.idx) ? 'sense-row selected' : 'sense-row';
+        innerHtml += `
+          <div class="${rowCls}" id="row_${radioName}_${s.idx}"
+               onclick="document.getElementById('r_${radioName}_${s.idx}').click()">
+            <input type="radio" class="sense-radio"
+              id="r_${radioName}_${s.idx}"
+              name="${radioName}" value="${s.idx}" ${checked}
+              onclick="event.stopPropagation()"
+              onchange="onRadioChange('${wordKey}','${pos}','${entry.py}',${s.idx})">
+            <span class="sense-id">[${s.sid}]</span>
+            <span class="sense-text">${s.text}</span>
+          </div>`;
+      }
+      innerHtml += '</div>';
+
+      // 備注 + 確認列
+      const noteVal = ann ? (ann.annotator_note || '') : '';
+      innerHtml += `
+        <div class="confirm-row">
+          <input class="note-input" type="text"
+            id="note_${k.replace(/[^a-zA-Z0-9]/g,'_')}"
+            placeholder="備注（可留空）" value="${noteVal}">
+          <button class="btn primary" style="padding:4px 14px"
+            onclick="confirmAnnotation('${wordKey}','${pos}','${entry.py}')">✓ 確認</button>
+          <button class="btn" style="padding:4px 10px"
+            onclick="clearAnnotation('${wordKey}','${pos}','${entry.py}')">清除</button>
+        </div>`;
+    }
+
+    grp.innerHTML = innerHtml;
+    container.appendChild(grp);
+  }
+
+  updateNavHighlight();
+  updateProgress();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 標注動作
+// ═══════════════════════════════════════════════════════════════
+
+function onRadioChange(wordKey, pos, py, idx) {
+  // 選中時高亮列
+  const radioName = `radio_${pgKey(wordKey,pos,py).replace(/[^a-zA-Z0-9]/g,'_')}`;
+  document.querySelectorAll(`[id^="row_${radioName}_"]`).forEach(el => {
+    el.classList.remove('selected');
+  });
+  document.getElementById(`row_${radioName}_${idx}`)?.classList.add('selected');
+}
+
+function onSkip(wordKey, pos, py, checked) {
+  const k     = pgKey(wordKey, pos, py);
+  const entry = dictEntries[wordKey];
+  const grpId = `grp-${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+  const grp   = document.getElementById(grpId);
+  if (checked) {
+    annotations[k] = {word_key:wordKey, word:entry.word, zhuyin:entry.zy, pos,
+      basic_sense_id:'', basic_sense_text:'', source:'manual_skip', skipped:true, annotator_note:''};
+    grp?.classList.add('skipped');
+    grp?.querySelector('.pos-group-status').innerHTML = '<span class="status-skip">略過</span>';
+  } else {
+    delete annotations[k];
+    grp?.classList.remove('skipped');
+    grp?.querySelector('.pos-group-status').innerHTML = '<span class="status-todo">待標注</span>';
+  }
+  updateNavHighlight();
+  updateProgress();
+}
+
+function confirmAnnotation(wordKey, pos, py) {
+  const k     = pgKey(wordKey, pos, py);
+  const entry = dictEntries[wordKey];
+  const senses = entry.groups[pos];
+  const radioName = `radio_${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+  const checked = document.querySelector(`[name="${radioName}"]:checked`);
+  if (!checked) { toast('請先選擇一個義項', true); return; }
+  const idx   = parseInt(checked.value);
+  const sense = senses[idx];
+  const noteEl = document.getElementById(`note_${k.replace(/[^a-zA-Z0-9]/g,'_')}`);
+  const note  = noteEl ? noteEl.value : '';
+  annotations[k] = {
+    word_key: wordKey, word: entry.word, zhuyin: entry.zy, pos,
+    basic_sense_id: sense.sid, basic_sense_text: sense.text,
+    _idx: idx, source: 'manual', skipped: false, annotator_note: note
+  };
+  // 更新卡片外觀
+  const grpEl = document.getElementById(`grp-${k.replace(/[^a-zA-Z0-9]/g,'_')}`);
+  grpEl?.classList.add('done');
+  grpEl?.classList.remove('skipped');
+  if (grpEl) grpEl.querySelector('.pos-group-status').innerHTML = '<span class="status-done">✓ 已標注</span>';
+  updateNavHighlight();
+  updateProgress();
+  toast(`已儲存：${wordKey}[${pos}] → [${sense.sid}]`);
+}
+
+function clearAnnotation(wordKey, pos, py) {
+  const k = pgKey(wordKey, pos, py);
+  delete annotations[k];
+  const grpEl = document.getElementById(`grp-${k.replace(/[^a-zA-Z0-9]/g,'_')}`);
+  grpEl?.classList.remove('done','skipped');
+  if (grpEl) grpEl.querySelector('.pos-group-status').innerHTML = '<span class="status-todo">待標注</span>';
+  // 清除 radio 選取
+  const radioName = `radio_${k.replace(/[^a-zA-Z0-9]/g,'_')}`;
+  document.querySelectorAll(`[name="${radioName}"]`).forEach(r => r.checked = false);
+  document.querySelectorAll(`[id^="row_${radioName}_"]`).forEach(el => el.classList.remove('selected'));
+  updateNavHighlight();
+  updateProgress();
+  toast(`已清除：${wordKey}[${pos}]`);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 詞庫輔助欄
+// ═══════════════════════════════════════════════════════════════
+
+function renderLex(baseWord) {
+  const info = lexiconInfo[baseWord];
+  const cont = document.getElementById('lex-content');
+  if (!info) {
+    cont.innerHTML = '<div style="color:var(--text3);font-size:12px">無對應詞條</div>';
+    return;
+  }
+  const concrete = info.sem_features.filter(f => CONCRETE_FEATS.has(f));
+  const other    = info.sem_features.filter(f => !CONCRETE_FEATS.has(f));
+  const posTags  = info.pos_list.map(p => `<span class="tag">${p}</span>`).join('');
+  const concTags = concrete.map(f => `<span class="tag concrete">${f}</span>`).join('');
+  const othTags  = other.map(f => `<span class="tag">${f}</span>`).join('');
+  cont.innerHTML = `
+    <div class="lex-row">
+      <div class="lex-label">詞頻</div>
+      <div class="lex-freq">${info.freq.toLocaleString()}</div>
+    </div>
+    <div class="lex-row" style="margin-top:10px">
+      <div class="lex-label">句法碼</div>
+      <div class="tag-wrap">${posTags || '<span style="color:var(--text3);font-size:11px">無</span>'}</div>
+    </div>
+    ${concrete.length ? `
+    <div class="lex-row" style="margin-top:10px">
+      <div class="lex-label" style="color:var(--gold)">★ 具體性特徵</div>
+      <div class="tag-wrap">${concTags}</div>
+    </div>` : ''}
+    ${other.length ? `
+    <div class="lex-row" style="margin-top:8px">
+      <div class="lex-label">其他語義特徵</div>
+      <div class="tag-wrap">${othTags}</div>
+    </div>` : ''}
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 進度
+// ═══════════════════════════════════════════════════════════════
+
+function updateProgress() {
+  let done = 0, total = 0;
+  for (const [wk, entry] of Object.entries(dictEntries)) {
+    for (const [pos, ss] of Object.entries(entry.groups)) {
+      if (!ANNOTATE_POS.has(pos) || ss.length <= 1) continue;
+      total++;
+      const k = pgKey(wk, pos, entry.py);
+      if (annotations[k]) done++;
+    }
+  }
+  const pct = total ? done / total * 100 : 0;
+  document.getElementById('progress-text').textContent = `${done.toLocaleString()}/${total.toLocaleString()}（${pct.toFixed(1)}%）`;
+  document.getElementById('progress-bar-fill').style.width = `${pct}%`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// UI helpers
+// ═══════════════════════════════════════════════════════════════
+
+function showLoading(msg) {
+  const el = document.getElementById('loading-overlay');
+  document.getElementById('loading-text').textContent = msg || '處理中…';
+  el.style.display = 'flex';
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').style.display = 'none';
+}
+
+let toastTimer;
+function toast(msg, isErr=false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.borderColor = isErr ? '#c0392b' : 'var(--border2)';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// 鍵盤快捷鍵
+document.addEventListener('keydown', e => {
+  if (document.getElementById('main').style.display === 'none') return;
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowRight') goWord(1);
+  if (e.key === 'ArrowLeft')  goWord(-1);
+});
+
+// 預設嵌入詞庫小組資料（空，等使用者上傳 csv）
+// 注意：純靜態版本不內建 Lexicon 資料
+// 若需詞庫輔助，請在此加入 loadLexiconCSV() 或預先嵌入資料
+
+// ═══════════════════════════════════════════════════════════════
+// 詞庫 CSV 支援（可選）
+// ═══════════════════════════════════════════════════════════════
+
+// 在 topbar 動態加入詞庫 CSV 按鈕
+window.addEventListener('DOMContentLoaded', () => {
+  const sep = document.createElement('div');
+  sep.className = 'tb-sep';
+  const btn = document.createElement('button');
+  btn.className = 'btn';
+  btn.textContent = '📋 載入詞庫 CSV（選填）';
+  btn.onclick = () => document.getElementById('lex-file').click();
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.id = 'lex-file'; inp.accept = '.csv';
+  inp.style.display = 'none';
+  inp.onchange = loadLexCSV;
+
+  const tb = document.getElementById('topbar');
+  const progWrap = document.getElementById('progress-wrap');
+  tb.insertBefore(sep, progWrap);
+  tb.insertBefore(btn, progWrap);
+  tb.insertBefore(inp, progWrap);
+});
+
+function loadLexCSV(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n');
+    const header = lines[0].split(',');
+    const iWord = header.indexOf('Word');
+    const iFreq = header.indexOf('WordFreq');
+    const iPos  = header.indexOf('SyntactFunction');
+    const iSem  = header.indexOf('SemanticFeatures');
+    lexiconInfo = {};
+    for (let i = 1; i < lines.length; i++) {
+      const cols = lines[i].split(',');
+      const word = (cols[iWord] || '').trim();
+      if (!word) continue;
+      const freq = parseInt(cols[iFreq]) || 0;
+      const pos  = (cols[iPos] || '').split(';').map(s=>s.trim()).filter(Boolean);
+      const sem  = (cols[iSem] || '').split(';').map(s=>s.trim()).filter(Boolean);
+      lexiconInfo[word] = {freq, pos_list: pos, sem_features: sem};
+    }
+    toast(`詞庫載入完成：${Object.keys(lexiconInfo).length.toLocaleString()} 筆`);
+    if (navWords.length) renderWordByIdx(currentIdx);
+    evt.target.value = '';
+  };
+  reader.readAsText(file, 'utf-8');
+}
+</script>
+</body>
+</html>
