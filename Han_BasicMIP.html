@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Han-BasicMIP 中文基本義標注工具</title>
+<title>Han-BasicMIP 中文基本義標注工具 v3</title>
 <style>
 :root {
   --bg:#0f1a14;--bg2:#162019;--bg3:#1e2d22;--bg4:#253329;
@@ -142,7 +142,7 @@ input[type=file]{display:none}
 <body>
 
 <div id="topbar">
-  <h1>Han-BasicMIP</h1>
+  <h1>Han-BasicMIP <span style="font-size:11px;color:var(--text3);font-family:var(--fui)">v3</span></h1>
   <div class="sep"></div>
   <button class="btn" id="btn-xlsx">📂 載入辭典 xlsx</button>
   <input type="file" id="f-xlsx" accept=".xlsx,.xlsm">
@@ -615,7 +615,9 @@ function doConfirm(wk,entry,pos,k,senses,rname,grp,stEl) {
   const checked=document.querySelector(`[name="${rname}"]:checked`);
   if(!checked){ toast('請先選擇一個義項',true); return; }
   const idx=parseInt(checked.value);
+  console.log('[doConfirm] checked.value=',checked.value,'idx=',idx,'senses=',JSON.stringify(senses));
   const sense=senses[idx];
+  console.log('[doConfirm] sense=',sense);
   if(!sense){ toast('找不到對應義項，請重試',true); return; }
   const noteEl=document.getElementById(`note_${k.replace(/[^a-z0-9]/gi,'_')}`);
   ann[k]={word_key:wk,word:entry.word,zhuyin:entry.zy,pos,
