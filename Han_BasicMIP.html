@@ -337,7 +337,10 @@ function loadXlsx(file) {
           const senses=[];
           for (const r of entry.rows) for (const s of r.senses) senses.push({...s,idx:senses.length});
           const grps={};
-          for (const s of senses) { if(!grps[s.pos])grps[s.pos]=[]; grps[s.pos].push({sid:s.sid,text:s.text}); }
+          for (const s of senses) {
+            if(!grps[s.pos])grps[s.pos]=[];
+            grps[s.pos].push({sid:s.sid,text:s.text,idx:grps[s.pos].length});
+          }
           const needs = Object.entries(grps).some(([p,ss])=>ANN_POS.has(p)&&ss.length>1);
           if (needs) dict[wk]={word,wordKey:wk,zy,py,isPoly,grps};
         }
@@ -554,15 +557,15 @@ function buildPosGroup(wk,entry,pos,senses) {
   const sl=document.createElement('div'); sl.className='slist';
   const curVal = a&&!a.skipped ? a._idx : null;
 
-  for (const s of senses) {
+  senses.forEach((s,i)=>{
     const row=document.createElement('div');
-    row.className='srow'+(curVal===s.idx?' sel':'');
-    row.id=`row_${rname}_${s.idx}`;
+    row.className='srow'+(curVal===i?' sel':'');
+    row.id=`row_${rname}_${i}`;
 
     const rb=document.createElement('input'); rb.type='radio';
-    rb.name=rname; rb.value=s.idx;
-    rb.checked=(curVal===s.idx)||(curVal===null&&sugI===s.idx&&!isDone);
-    rb.addEventListener('change',()=>highlightRow(rname,s.idx));
+    rb.name=rname; rb.value=i;
+    rb.checked=(curVal===i)||(curVal===null&&sugI===i&&!isDone);
+    rb.addEventListener('change',()=>highlightRow(rname,i));
 
     const sid=document.createElement('span'); sid.className='sid'; sid.textContent=`[${s.sid}]`;
     const stxt=document.createElement('span'); stxt.className='stxt'; stxt.textContent=s.text;
@@ -570,7 +573,7 @@ function buildPosGroup(wk,entry,pos,senses) {
     row.appendChild(rb); row.appendChild(sid); row.appendChild(stxt);
     row.addEventListener('click',e=>{ if(e.target!==rb){rb.checked=true; rb.dispatchEvent(new Event('change'));} });
     sl.appendChild(row);
-  }
+  });
   grp.appendChild(sl);
 
   // confirm row
@@ -612,7 +615,7 @@ function doConfirm(wk,entry,pos,k,senses,rname,grp,stEl) {
   const checked=document.querySelector(`[name="${rname}"]:checked`);
   if(!checked){ toast('請先選擇一個義項',true); return; }
   const idx=parseInt(checked.value);
-  const sense=senses.find(s=>s.idx===idx);
+  const sense=senses[idx];
   if(!sense){ toast('找不到對應義項，請重試',true); return; }
   const noteEl=document.getElementById(`note_${k.replace(/[^a-z0-9]/gi,'_')}`);
   ann[k]={word_key:wk,word:entry.word,zhuyin:entry.zy,pos,
@@ -632,11 +635,8 @@ function doClear(wk,entry,pos,k,rname,sugI,grp,stEl) {
   document.querySelectorAll(`[name="${rname}"]`).forEach(r=>{ r.checked=false; });
   document.querySelectorAll(`[id^="row_${rname}_"]`).forEach(el=>el.classList.remove('sel'));
   if(sugI!==null){
-    const sugSense=senses[sugI];
-    if(sugSense){
-      const sugRb=document.querySelector(`[name="${rname}"][value="${sugSense.idx}"]`);
-      if(sugRb){ sugRb.checked=true; highlightRow(rname,sugSense.idx); }
-    }
+    const sugRb=document.querySelector(`[name="${rname}"][value="${sugI}"]`);
+    if(sugRb){ sugRb.checked=true; highlightRow(rname,sugI); }
   }
   updateNavHL(); updateProgress();
   toast(`已清除：${wk}[${pos}]`);
