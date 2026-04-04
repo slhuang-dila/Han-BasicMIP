@@ -287,10 +287,8 @@ function lsClear() {
 }
 
 function saveAnnToLS() {
-  // 標注有變化時自動存
-  const clean={};
-  for (const [k,v] of Object.entries(ann)) { const {_idx,...r}=v; clean[k]=r; }
-  lsSave(LS_ANN, clean);
+  // 直接存完整 ann（含 _idx），讓載入後能恢復選取狀態
+  lsSave(LS_ANN, ann);
 }
 
 function hasCachedDict() {
@@ -440,7 +438,22 @@ function loadAnn(file) {
   const reader = new FileReader();
   reader.onload = e => {
     try {
-      ann = JSON.parse(e.target.result);
+      const loaded = JSON.parse(e.target.result);
+      // 重建 _idx：讓渲染時能正確顯示選取狀態
+      ann = {};
+      for (const [k, v] of Object.entries(loaded)) {
+        if (v._idx !== undefined) {
+          ann[k] = v;  // 已有 _idx（從快取備份）
+        } else if (!v.skipped && v.basic_sense_id && dict[v.word_key]) {
+          // 從 basic_sense_id 比對還原 _idx
+          const entry = dict[v.word_key];
+          const grp = entry && entry.grps ? entry.grps[v.pos] : null;
+          const found = grp ? grp.findIndex(s => s.sid === v.basic_sense_id) : -1;
+          ann[k] = {...v, _idx: found >= 0 ? found : undefined};
+        } else {
+          ann[k] = v;
+        }
+      }
       lsSave(LS_ANN, ann);
       document.getElementById('ann-st').textContent = `✓ ${Object.keys(ann).length.toLocaleString()} 筆`;
       toast(`已載入 ${Object.keys(ann).length.toLocaleString()} 筆標注 · 已快取`);
