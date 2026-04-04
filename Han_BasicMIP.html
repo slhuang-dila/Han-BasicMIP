@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Han-BasicMIP 中文基本義標注工具 v3</title>
+<title>Han-BasicMIP 中文基本義標注工具 v4</title>
 <style>
 :root {
   --bg:#0f1a14;--bg2:#162019;--bg3:#1e2d22;--bg4:#253329;
@@ -142,7 +142,7 @@ input[type=file]{display:none}
 <body>
 
 <div id="topbar">
-  <h1>Han-BasicMIP <span style="font-size:11px;color:var(--text3);font-family:var(--fui)">v3</span></h1>
+  <h1>Han-BasicMIP <span style="font-size:11px;color:var(--text3);font-family:var(--fui)">v4</span></h1>
   <div class="sep"></div>
   <button class="btn" id="btn-xlsx">📂 載入辭典 xlsx</button>
   <input type="file" id="f-xlsx" accept=".xlsx,.xlsm">
@@ -151,7 +151,8 @@ input[type=file]{display:none}
   <button class="btn" id="btn-ann" disabled>📥 載入標注 json</button>
   <input type="file" id="f-ann" accept=".json">
   <div class="sep"></div>
-  <button class="btn gold" id="btn-dl" disabled>⬇ 下載標注 json</button>
+  <button class="btn gold" id="btn-dl" disabled>⬇ 備份標注 json</button>
+  <button class="btn" id="btn-clear-ls" title="清除瀏覽器快取（標注和辭典）" style="color:var(--text3);font-size:12px">⊗ 清快取</button>
   <div id="prog-wrap">
     <span id="prog-text">—</span>
     <div id="prog-track"><div id="prog-fill"></div></div>
@@ -161,7 +162,25 @@ input[type=file]{display:none}
 <div id="start">
   <div class="start-logo">漢</div>
   <div class="start-sub">Han-BasicMIP 中文基本義標注工具</div>
-  <div class="start-panel">
+
+  <!-- 有快取時顯示 -->
+  <div class="start-panel" id="panel-cached" style="display:none">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <span style="font-size:22px">✓</span>
+      <div>
+        <div style="font-size:14px;color:var(--accent2);font-weight:600">找到上次的工作資料</div>
+        <div class="start-note" id="cache-info" style="margin-top:2px"></div>
+      </div>
+    </div>
+    <div class="sdiv"></div>
+    <div style="display:flex;gap:10px;justify-content:center;margin-top:6px;flex-wrap:wrap">
+      <button class="btn primary" id="btn-resume" style="padding:8px 28px;font-size:14px">↩ 接續上次標注</button>
+      <button class="btn" id="btn-clear-cache" style="color:var(--text3)">清除快取，重新開始</button>
+    </div>
+  </div>
+
+  <!-- 無快取 / 重新開始時顯示 -->
+  <div class="start-panel" id="panel-fresh">
     <div class="start-row">
       <label>第一步：載入教育部辭典 xlsx</label>
       <div class="upload-row">
@@ -182,9 +201,10 @@ input[type=file]{display:none}
       <button class="btn primary" id="btn-start" disabled style="padding:8px 32px;font-size:14px">開始標注 →</button>
     </div>
   </div>
+
   <div class="info-box">
-    標注完畢後點上方「⬇ 下載標注 json」存檔。<br>
-    下次開啟時再上傳該 json 即可接續作業。<br>
+    標注進度自動儲存於瀏覽器，下次開啟即可接續。<br>
+    換電腦前請用「⬇ 備份標注 json」備份，換電腦後再上傳。<br>
     存檔 key 格式：<code style="color:var(--gold)">詞_拼音_詞性碼</code>，如 <code style="color:var(--accent2)">行_xing2_V</code>
   </div>
 </div>
@@ -247,6 +267,35 @@ let nav  = [];       // filtered wordKey list
 let cur  = 0;
 let filt = 'todo';
 let xlsxReady = false;
+
+// ── localStorage 鍵名 ────────────────────────────────────────
+const LS_DICT = 'hanbasicmip_dict';
+const LS_ANN  = 'hanbasicmip_ann';
+const LS_LEX  = 'hanbasicmip_lex';
+const LS_META = 'hanbasicmip_meta';
+
+function lsSave(key, obj) {
+  try { localStorage.setItem(key, JSON.stringify(obj)); return true; }
+  catch(e) { console.warn('localStorage 寫入失敗：', e.message); return false; }
+}
+function lsLoad(key) {
+  try { const v=localStorage.getItem(key); return v ? JSON.parse(v) : null; }
+  catch(e) { return null; }
+}
+function lsClear() {
+  [LS_DICT,LS_ANN,LS_LEX,LS_META].forEach(k=>localStorage.removeItem(k));
+}
+
+function saveAnnToLS() {
+  // 標注有變化時自動存
+  const clean={};
+  for (const [k,v] of Object.entries(ann)) { const {_idx,...r}=v; clean[k]=r; }
+  lsSave(LS_ANN, clean);
+}
+
+function hasCachedDict() {
+  return !!localStorage.getItem(LS_DICT);
+}
 
 // ── 工具函式 ──────────────────────────────────────────────────
 function pyNum(py) {
@@ -349,8 +398,11 @@ function loadXlsx(file) {
         document.getElementById('btn-ann2').disabled = false;
         document.getElementById('btn-start').disabled= false;
         document.getElementById('btn-lex').disabled  = false;
+        // 存入 localStorage
+        const saved = lsSave(LS_DICT, dict);
+        lsSave(LS_META, {dictSize: Object.keys(dict).length, savedAt: new Date().toISOString()});
         hideLoad();
-        toast(`辭典載入：${Object.keys(dict).length.toLocaleString()} 筆需標注詞條`);
+        toast(`辭典載入：${Object.keys(dict).length.toLocaleString()} 筆需標注詞條${saved?' · 已快取':''}` );
       } catch(err) {
         hideLoad();
         document.getElementById('xlsx-st').textContent = '載入失敗';
@@ -376,7 +428,8 @@ function loadLexCSV(file) {
         pos_list:(c[iP]||'').split(';').map(s=>s.trim()).filter(Boolean),
         sem_features:(c[iS]||'').split(';').map(s=>s.trim()).filter(Boolean)};
     }
-    toast(`詞庫載入：${Object.keys(lex).length.toLocaleString()} 筆`);
+    lsSave(LS_LEX, lex);
+    toast(`詞庫載入：${Object.keys(lex).length.toLocaleString()} 筆 · 已快取`);
     if (nav.length) renderWord(cur);
   };
   reader.readAsText(file,'utf-8');
@@ -388,8 +441,9 @@ function loadAnn(file) {
   reader.onload = e => {
     try {
       ann = JSON.parse(e.target.result);
+      lsSave(LS_ANN, ann);
       document.getElementById('ann-st').textContent = `✓ ${Object.keys(ann).length.toLocaleString()} 筆`;
-      toast(`已載入 ${Object.keys(ann).length.toLocaleString()} 筆標注`);
+      toast(`已載入 ${Object.keys(ann).length.toLocaleString()} 筆標注 · 已快取`);
       if (document.getElementById('main').style.display==='flex') { refreshNav(); renderWord(cur); }
     } catch(err) { alert('json 格式錯誤：'+err.message); }
   };
@@ -615,9 +669,7 @@ function doConfirm(wk,entry,pos,k,senses,rname,grp,stEl) {
   const checked=document.querySelector(`[name="${rname}"]:checked`);
   if(!checked){ toast('請先選擇一個義項',true); return; }
   const idx=parseInt(checked.value);
-  console.log('[doConfirm] checked.value=',checked.value,'idx=',idx,'senses=',JSON.stringify(senses));
   const sense=senses[idx];
-  console.log('[doConfirm] sense=',sense);
   if(!sense){ toast('找不到對應義項，請重試',true); return; }
   const noteEl=document.getElementById(`note_${k.replace(/[^a-z0-9]/gi,'_')}`);
   ann[k]={word_key:wk,word:entry.word,zhuyin:entry.zy,pos,
@@ -627,6 +679,7 @@ function doConfirm(wk,entry,pos,k,senses,rname,grp,stEl) {
   grp.className='pg done';
   stEl.innerHTML='<span class="st-done">✓ 已標注</span>';
   updateNavHL(); updateProgress();
+  saveAnnToLS();
   toast(`已儲存：${wk}[${pos}] → [${sense.sid}]`);
 }
 
@@ -641,6 +694,7 @@ function doClear(wk,entry,pos,k,rname,sugI,grp,stEl) {
     if(sugRb){ sugRb.checked=true; highlightRow(rname,sugI); }
   }
   updateNavHL(); updateProgress();
+  saveAnnToLS();
   toast(`已清除：${wk}[${pos}]`);
 }
 
@@ -655,6 +709,7 @@ function doSkip(wk,entry,pos,k,grp,stEl,checked) {
     grp.className='pg';
     stEl.innerHTML='<span class="st-todo">待標注</span>';
   }
+  saveAnnToLS();
   updateNavHL(); updateProgress();
 }
 
@@ -687,6 +742,41 @@ function toast(msg,err=false){
 
 // ── 事件綁定（全部在這裡，不用 innerHTML onclick）───────────
 window.addEventListener('DOMContentLoaded',()=>{
+  // ── 快取偵測：啟動時自動載入 ─────────────────────────────
+  if (hasCachedDict()) {
+    const meta = lsLoad(LS_META) || {};
+    const savedAt = meta.savedAt ? new Date(meta.savedAt).toLocaleDateString('zh-TW',{month:'long',day:'numeric',hour:'2-digit',minute:'2-digit'}) : '未知時間';
+    const annCache = lsLoad(LS_ANN) || {};
+    const annCount = Object.keys(annCache).length;
+    document.getElementById('cache-info').textContent =
+      `辭典 ${(meta.dictSize||0).toLocaleString()} 筆・標注 ${annCount.toLocaleString()} 筆・${savedAt}`;
+    document.getElementById('panel-cached').style.display = 'block';
+    document.getElementById('panel-fresh').style.display  = 'none';
+
+    document.getElementById('btn-resume').addEventListener('click', ()=>{
+      showLoad('從快取載入資料…');
+      setTimeout(()=>{
+        dict = lsLoad(LS_DICT) || {};
+        ann  = lsLoad(LS_ANN)  || {};
+        lex  = lsLoad(LS_LEX)  || {};
+        hideLoad();
+        enterMain();
+        toast(`已從快取載入：辭典 ${Object.keys(dict).length.toLocaleString()} 筆，標注 ${Object.keys(ann).length.toLocaleString()} 筆`);
+      }, 50);
+    });
+
+    document.getElementById('btn-clear-cache').addEventListener('click', ()=>{
+      if (!confirm('確定清除快取？辭典和標注進度都會清除（建議先下載備份）。')) return;
+      lsClear();
+      document.getElementById('panel-cached').style.display = 'none';
+      document.getElementById('panel-fresh').style.display  = 'block';
+      toast('快取已清除');
+    });
+  } else {
+    document.getElementById('panel-cached').style.display = 'none';
+    document.getElementById('panel-fresh').style.display  = 'block';
+  }
+
   // xlsx
   const fxlsx=document.getElementById('f-xlsx');
   document.getElementById('btn-xlsx').addEventListener('click',()=>fxlsx.click());
@@ -706,15 +796,15 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   // download
   document.getElementById('btn-dl').addEventListener('click',downloadAnn);
+  document.getElementById('btn-clear-ls').addEventListener('click',()=>{
+    if(!confirm('確定清除快取？建議先下載備份。\n標注進度和辭典快取都會清除。')) return;
+    lsClear();
+    toast('快取已清除。重新整理頁面後需重新載入辭典。');
+    setTimeout(()=>location.reload(), 1500);
+  });
 
   // start
-  document.getElementById('btn-start').addEventListener('click',()=>{
-    document.getElementById('start').style.display='none';
-    document.getElementById('main').style.display='flex';
-    document.getElementById('btn-dl').disabled=false;
-    refreshNav();
-    if(nav.length) renderWord(0);
-  });
+  document.getElementById('btn-start').addEventListener('click',()=>enterMain());
 
   // nav chips
   document.querySelectorAll('.chip').forEach(c=>{
@@ -742,6 +832,14 @@ window.addEventListener('DOMContentLoaded',()=>{
 
 // SheetJS 就緒旗標
 window.addEventListener('xlsx-ready',()=>{ xlsxReady=true; });
+
+function enterMain() {
+  document.getElementById('start').style.display='none';
+  document.getElementById('main').style.display='flex';
+  document.getElementById('btn-dl').disabled=false;
+  refreshNav();
+  if(nav.length) renderWord(0);
+}
 </script>
 </body>
 </html>
